@@ -1,4 +1,4 @@
-# Digiplus Assignment
+# Assignment
 
 made an html file for the task.
 
