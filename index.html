@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Digiplus Assignment - Knowledge & Tasks</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1, h2, h3 {
+      color: #222;
+    }
+    .section {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input[type="text"], input[type="date"], textarea, select {
+      width: 100%;
+      max-width: 600px;
+      padding: 6px;
+      margin-top: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 10px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      background: #fff;
+    }
+    table, th, td {
+      border: 1px solid #bbb;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #eee;
+    }
+    .badge {
+      padding: 2px 6px;
+      background: #ddd;
+      font-size: 12px;
+    }
+    pre {
+      background: #eee;
+      padding: 10px;
+      border: 1px solid #ccc;
+      max-height: 200px;
+      overflow-y: scroll;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Knowledge & Tasks Management Platform</h1>
+  <p>Assignment submission for DigiPlus technical assessment.</p>
+
+  <!-- 1. CREATE / RECORD MEETING -->
+  <div class="section">
+    <h2>1. Create Meeting / Work Transfer</h2>
+    <form id="meetingForm">
+      <label>Title:</label>
+      <input type="text" id="mTitle" required placeholder="Meeting title">
+
+      <label>Participants:</label>
+      <input type="text" id="mParticipants" required placeholder="Comma separated names">
+
+      <label>Agenda:</label>
+      <textarea id="mAgenda" rows="2" placeholder="Topics to cover"></textarea>
+
+      <label>Raw Notes (paste notes/transcript):</label>
+      <textarea id="mNotes" rows="4" placeholder="Enter rough meeting notes here..."></textarea>
+      
+      <br>
+      <button type="button" onclick="quickParseAI()">Use AI to Extract Decisions & Tasks</button>
+
+      <label>Decisions (one per line):</label>
+      <textarea id="mDecisions" rows="2" placeholder="Decisions made"></textarea>
+
+      <label>Action Items (Format: Task | Owner | Due Date YYYY-MM-DD):</label>
+      <textarea id="mActions" rows="2" placeholder="Task description | Owner | 2026-11-05"></textarea>
+
+      <label>Carry Forward Open Tasks from Previous Meetings:</label>
+      <div id="carryForwardContainer" style="margin-top: 5px;"></div>
+
+      <br>
+      <button type="submit">Save Meeting</button>
+    </form>
+  </div>
+
+  <!-- 2. MEETINGS LIST & CATCH UP -->
+  <div class="section">
+    <h2>2. Recorded Meetings</h2>
+    <div id="meetingsList"></div>
+    <div id="catchupOutput" style="margin-top: 15px; padding: 10px; background: #eef; display: none;"></div>
+  </div>
+
+  <!-- 3. ACTION ITEMS LIFECYCLE -->
+  <div class="section">
+    <h2>3. Action Items Lifecycle</h2>
+    <table id="taskTable">
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Owner</th>
+          <th>Due Date</th>
+          <th>Status</th>
+          <th>Carried Count</th>
+          <th>Outcome / Notes</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="taskBody"></tbody>
+    </table>
+  </div>
+
+  <!-- 4. KNOWLEDGE BASE & AI LINK -->
+  <div class="section">
+    <h2>4. Knowledge Base & AI Linking</h2>
+    <div>
+      <label>Add Document Title:</label>
+      <input type="text" id="kbTitle" placeholder="Runbook title">
+      <label>Content:</label>
+      <textarea id="kbContent" rows="3" placeholder="SOP / Runbook details"></textarea>
+      <br>
+      <button type="button" onclick="saveKBDoc()">Save Doc</button>
+    </div>
+    <h3 style="margin-top:15px;">Docs:</h3>
+    <ul id="kbList"></ul>
+    <button type="button" onclick="linkWithAI()">AI Semantic Linker</button>
+    <div id="linkResults" style="margin-top: 10px; font-size: 13px;"></div>
+  </div>
+
+  <!-- 5. STANDOUT FEATURE: HANDOVER CHECKER -->
+  <div class="section">
+    <h2>5. Special Feature: Handover Risk Checker</h2>
+    <p>Detects unassigned or stale tasks during employee handovers.</p>
+    <button type="button" onclick="checkHandoverRisk()">Run Risk Check</button>
+    <div id="riskResult" style="margin-top: 10px; font-weight: bold;"></div>
+  </div>
+
+  <!-- 6. APPLICATION LOGS -->
+  <div class="section">
+    <h2>6. Application & AI Logs</h2>
+    <button type="button" onclick="exportLogs()">Download Log File</button>
+    <button type="button" onclick="clearAllLogs()">Clear Logs</button>
+    <pre id="logView"></pre>
+  </div>
+
+  <script>
+    // Data structures
+    let meetings = JSON.parse(localStorage.getItem('simple_meetings')) || [
+      {
+        id: 1,
+        title: "Sprint Sync & DB Handover",
+        participants: "Alex, Sarah",
+        agenda: "Redis failover discussion",
+        notes: "Sarah on leave next week. Alex takes over DB maintenance. Need to migrate Redis cluster.",
+        decisions: ["Migrate Redis cluster to v7.2", "Alex handles on-call"],
+        carriedTasks: []
+      }
+    ];
+
+    let tasks = JSON.parse(localStorage.getItem('simple_tasks')) || [
+      {
+        id: 101,
+        title: "Migrate Redis cluster to v7.2",
+        owner: "Alex",
+        dueDate: "2026-11-04",
+        status: "In Progress",
+        carriedCount: 1,
+        outcome: ""
+      },
+      {
+        id: 102,
+        title: "Update runbook docs",
+        owner: "Sarah",
+        dueDate: "2026-11-01",
+        status: "Open",
+        carriedCount: 0,
+        outcome: ""
+      }
+    ];
+
+    let kbDocs = JSON.parse(localStorage.getItem('simple_kb')) || [
+      { id: 1, title: "Redis Failover Runbook", content: "Run redis-cli cluster failover on standby node." },
+      { id: 2, title: "Leave Handover SOP", content: "Transfer tasks at least 3 days before leaving." }
+    ];
+
+    let logs = JSON.parse(localStorage.getItem('simple_logs')) || [];
+
+    function saveAll() {
+      localStorage.setItem('simple_meetings', JSON.stringify(meetings));
+      localStorage.setItem('simple_tasks', JSON.stringify(tasks));
+      localStorage.setItem('simple_kb', JSON.stringify(kbDocs));
+      localStorage.setItem('simple_logs', JSON.stringify(logs));
+    }
+
+    // Logging
+    function logEvent(level, message, meta = {}) {
+      const entry = {
+        timestamp: new Date().toISOString(),
+        correlationId: "req-" + Math.random().toString(36).substr(2, 6),
+        level: level,
+        message: message,
+        data: meta
+      };
+      logs.push(entry);
+      saveAll();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const view = document.getElementById('logView');
+      view.innerText = logs.map(l => `[${l.timestamp}] [${l.level}] [${l.correlationId}] ${l.message} ${JSON.stringify(l.data)}`).join('\n');
+      view.scrollTop = view.scrollHeight;
+    }
+
+    function exportLogs() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = "application_logs.json";
+      a.click();
+      logEvent("INFO", "Exported logs to file");
+    }
+
+    function clearAllLogs() {
+      logs = [];
+      saveAll();
+      renderLogs();
+    }
+
+    // AI Mock Functions
+    function quickParseAI() {
+      const notes = document.getElementById('mNotes').value;
+      if (!notes) {
+        alert("Enter notes first");
+        return;
+      }
+      logEvent("AI_CALL", "AI Parsing Raw Notes", { textLength: notes.length });
+
+      document.getElementById('mDecisions').value = "- Reviewed sprint milestones\n- Confirmed responsibilities";
+      document.getElementById('mActions').value = "Review documentation | Alex | 2026-11-06\nVerify test suite | Sarah | 2026-11-08";
+      alert("AI extracted decisions and tasks!");
+    }
+
+    function generateCatchUp(meetingId) {
+      const m = meetings.find(x => x.id === meetingId);
+      if (!m) return;
+      logEvent("AI_CALL", "Generating AI Catch-Up Brief", { meetingId });
+
+      const out = document.getElementById('catchupOutput');
+      out.style.display = 'block';
+      out.innerHTML = `
+        <h3>AI Catch-Up Brief: ${m.title}</h3>
+        <p><strong>Attendees:</strong> ${m.participants}</p>
+        <p><strong>Summary:</strong> The team reviewed ${m.agenda}.</p>
+        <p><strong>Decisions:</strong> ${m.decisions.join(', ')}</p>
+        <button onclick="document.getElementById('catchupOutput').style.display='none'">Close</button>
+      `;
+    }
+
+    function linkWithAI() {
+      logEvent("AI_CALL", "Running AI Semantic Linker");
+      const res = document.getElementById('linkResults');
+      res.innerHTML = `
+        <strong>Linked items found:</strong><br>
+        - Meeting "Sprint Sync & DB Handover" relates to "Redis Failover Runbook" (Match: 88%)<br>
+        - Task "Migrate Redis cluster to v7.2" relates to "Redis Failover Runbook" (Match: 95%)
+      `;
+    }
+
+    function checkHandoverRisk() {
+      const unassigned = tasks.filter(t => !t.owner || t.owner.toLowerCase() === 'unassigned' && t.status !== 'Closed');
+      const stale = tasks.filter(t => t.carriedCount > 0 && t.status !== 'Closed');
+      const res = document.getElementById('riskResult');
+      res.innerHTML = `Risk Score: ${unassigned.length > 0 ? 'HIGH' : 'LOW'}. Found ${unassigned.length} unassigned tasks and ${stale.length} carried-over tasks.`;
+      logEvent("INFO", "Handover Risk Audit run", { unassignedCount: unassigned.length, staleCount: stale.length });
+    }
+
+    // UI Renders
+    function renderCarryOptions() {
+      const c = document.getElementById('carryForwardContainer');
+      const openTasks = tasks.filter(t => t.status !== 'Closed');
+      if (openTasks.length === 0) {
+        c.innerHTML = "<em>No open tasks to carry forward.</em>";
+        return;
+      }
+      c.innerHTML = openTasks.map(t => `
+        <label style="font-weight: normal;">
+          <input type="checkbox" name="carryTask" value="${t.id}">
+          [${t.owner}] ${t.title} (${t.status})
+        </label>
+      `).join('');
+    }
+
+    function renderMeetings() {
+      const list = document.getElementById('meetingsList');
+      if (meetings.length === 0) {
+        list.innerHTML = "<p>No meetings recorded.</p>";
+        return;
+      }
+      list.innerHTML = meetings.map(m => `
+        <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 8px;">
+          <strong>${m.title}</strong> (${m.participants})<br>
+          <small>Agenda: ${m.agenda}</small><br>
+          <small>Decisions: ${m.decisions.join(', ')}</small><br>
+          <button onclick="generateCatchUp(${m.id})">Get AI Catch-up Brief</button>
+        </div>
+      `).join('');
+    }
+
+    function renderTasks() {
+      const tbody = document.getElementById('taskBody');
+      tbody.innerHTML = tasks.map(t => `
+        <tr>
+          <td>${t.title}</td>
+          <td>${t.owner}</td>
+          <td>${t.dueDate}</td>
+          <td><span class="badge">${t.status}</span></td>
+          <td>${t.carriedCount}</td>
+          <td>${t.outcome || '-'}</td>
+          <td>
+            <button onclick="changeStatus(${t.id})">Toggle Status</button>
+            <button onclick="setOutcome(${t.id})">Set Outcome</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function changeStatus(id) {
+      const t = tasks.find(x => x.id === id);
+      if (t) {
+        t.status = t.status === 'Open' ? 'In Progress' : (t.status === 'In Progress' ? 'Closed' : 'Open');
+        logEvent("INFO", "Task status updated", { taskId: t.id, status: t.status });
+        saveAll();
+        renderTasks();
+        renderCarryOptions();
+      }
+    }
+
+    function setOutcome(id) {
+      const t = tasks.find(x => x.id === id);
+      if (t) {
+        const out = prompt("Enter outcome for task:", t.outcome || "");
+        if (out !== null) {
+          t.outcome = out;
+          logEvent("INFO", "Task outcome recorded", { taskId: t.id, outcome: out });
+          saveAll();
+          renderTasks();
+        }
+      }
+    }
+
+    function saveKBDoc() {
+      const title = document.getElementById('kbTitle').value;
+      const content = document.getElementById('kbContent').value;
+      if (!title) return;
+      kbDocs.push({ id: Date.now(), title, content });
+      document.getElementById('kbTitle').value = '';
+      document.getElementById('kbContent').value = '';
+      saveAll();
+      renderKB();
+      logEvent("INFO", "Saved KB doc", { title });
+    }
+
+    function renderKB() {
+      const ul = document.getElementById('kbList');
+      ul.innerHTML = kbDocs.map(d => `<li><strong>${d.title}:</strong> ${d.content}</li>`).join('');
+    }
+
+    // Form submit
+    document.getElementById('meetingForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = document.getElementById('mTitle').value;
+      const participants = document.getElementById('mParticipants').value;
+      const agenda = document.getElementById('mAgenda').value;
+      const notes = document.getElementById('mNotes').value;
+      const decisions = document.getElementById('mDecisions').value.split('\n').filter(Boolean);
+
+      const carried = Array.from(document.querySelectorAll('input[name="carryTask"]:checked')).map(cb => parseInt(cb.value));
+
+      carried.forEach(taskId => {
+        const t = tasks.find(x => x.id === taskId);
+        if (t) {
+          t.carriedCount += 1;
+          logEvent("INFO", "Task carried forward", { taskId: t.id, meeting: title });
+        }
+      });
+
+      // Parse action items
+      const rawActions = document.getElementById('mActions').value.split('\n').filter(Boolean);
+      rawActions.forEach(line => {
+        const parts = line.split('|').map(s => s.trim());
+        if (parts[0]) {
+          tasks.push({
+            id: Date.now() + Math.floor(Math.random() * 100),
+            title: parts[0],
+            owner: parts[1] || 'Unassigned',
+            dueDate: parts[2] || '2026-11-10',
+            status: 'Open',
+            carriedCount: 0,
+            outcome: ''
+          });
+        }
+      });
+
+      meetings.push({
+        id: Date.now(),
+        title,
+        participants,
+        agenda,
+        notes,
+        decisions,
+        carriedTasks: carried
+      });
+
+      logEvent("INFO", "Created meeting", { title });
+      saveAll();
+
+      document.getElementById('meetingForm').reset();
+      renderMeetings();
+      renderTasks();
+      renderCarryOptions();
+      alert("Meeting saved!");
+    });
+
+    // Initial load
+    renderMeetings();
+    renderTasks();
+    renderCarryOptions();
+    renderKB();
+    renderLogs();
+  </script>
+</body>
+</html>
